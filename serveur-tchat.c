@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h> // Pour struct sockaddr_in
 #include <arpa/inet.h> // Pour htons et inet_aton
+#include "serveur.h"
 
 /* Déclaration des Définitions */
 #define PORT IPPORT_USERRESERVED // = 5000
@@ -28,10 +29,10 @@ int main() {
 	char messageRecu[LG_MESSAGE]; // Message de la couche Application
 	int ecrits, lus; // Nb d'octets écrits et lus
 	int retour;
-	struct user users[MAX_USERS];
-	struct pollfd pollfds[MAX_USERS + 1];
+	user users[MAX_USERS];
+	pollfd pollfds[MAX_USERS + 1];
 
-	memset(users, '\0', MAX_USERS*sizeof(struct user));
+	memset(users, '\0', MAX_USERS*sizeof(users));
 
 	// Crée un socket de communication
 	// 0 indique que l'on utilisera le protocole par défaut associé à SOCK_STREAM soit TCP
