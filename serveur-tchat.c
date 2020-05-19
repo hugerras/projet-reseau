@@ -13,16 +13,21 @@
 
 /* Déclaration des Définitions */
 #define PORT IPPORT_USERRESERVED // = 5000
-#define LG_MESSAGE 256
-#define MAX_USERS 10
-#define MAX_LOGIN_SIZE 50
+#define LG_MAX_MESSAGE 256
+#define LG_MAX_LOGIN 50
+#define NB_MAX_USERS 10
 
 /* Déclaration des Structures */
 // Structure Informations Utilisateur
 struct user {
 	int socket;
-	char login[MAX_LOGIN_SIZE];
+	char login[LG_MAX_LOGIN];
 };
+
+/* Déclaration des Fonctions */
+int main();
+int gestionCommandeUser();
+void afficherMessageATous();
 
 /* Fonction principale */
 int main() {
@@ -32,14 +37,14 @@ int main() {
 	socklen_t longueurAdresse;
 	int socketDialogue;
 	struct sockaddr_in pointDeRencontreDistant;
-	char messageEnvoi[LG_MESSAGE]; // Message de la couche Application
-	char messageRecu[LG_MESSAGE]; // Message de la couche Application
+	char messageEnvoi[LG_MAX_MESSAGE]; // Message de la couche Application
+	char messageRecu[LG_MAX_MESSAGE]; // Message de la couche Application
 	int ecrits, lus; // Nb d'octets écrits et lus
 	int retour;
-	struct user users[MAX_USERS];
-	struct pollfd pollfds[MAX_USERS + 1];
+	struct user users[NB_MAX_USERS];
+	struct pollfd pollfds[NB_MAX_USERS + 1];
 
-	memset(users, '\0', MAX_USERS*sizeof(struct user));
+	memset(users, '\0', NB_MAX_USERS*sizeof(struct user));
 
 	// Crée un socket de communication
 	// 0 indique que l'on utilisera le protocole par défaut associé à SOCK_STREAM soit TCP
@@ -91,7 +96,7 @@ int main() {
 		nfds++;
 
 		// Remplissage du tableau pollfds avec les infos des utilisateurs actuellement connectés
-		for (i = 0; i < MAX_USERS; i++) {
+		for (i = 0; i < NB_MAX_USERS; i++) {
 			if (users[i].socket != 0) {
 				pollfds[nfds].fd = users[i].socket;
 				pollfds[nfds].events = POLLIN;
@@ -125,18 +130,18 @@ int main() {
 						}
 
 						// Ajout de l'utilisateur
-						for (j = 0; j < MAX_USERS; j++) {
+						for (j = 0; j < NB_MAX_USERS; j++) {
 							// S'il y a une place de libre dans le tableau des utilisateurs connectés, on ajoute le nouvel utilisateur au tableau
 							if (users[j].socket == 0) {
 								users[j].socket = socketDialogue;
-								snprintf(users[j].login, MAX_LOGIN_SIZE, "anonymous%d", socketDialogue);
-								printf("Ajout de l'utilisateur %s en position %d\n", users[j].login, j);
+								snprintf(users[j].login, LG_MAX_LOGIN, "anonymous%d", socketDialogue);
+								printf("[INFO] Ajout de l'utilisateur %s en position %d\n", users[j].login, j);
 								break;
 							}
 
 							// Si aucune place n'a été trouvée
-							if (j == MAX_USERS) {
-								printf("Plus de place de disponible pour ce nouvel utilisateur\n");
+							if (j == NB_MAX_USERS) {
+								printf("[INFO] Plus de place de disponible pour ce nouvel utilisateur\n");
 								close(socketDialogue);
 							}
 						}
@@ -145,20 +150,20 @@ int main() {
 					// Sinon, il s'agit d'un évènement d'un utilisateur (message, commande, etc)
 					else {
 						// On cherche quel utilisateur a fait la demande grâce à sa socket
-						for (j = 0; j < MAX_USERS; j++) {
+						for (j = 0; j < NB_MAX_USERS; j++) {
 							if (users[j].socket == pollfds[i].fd) {
 								break;
 							}
 						}
 
 						// Si aucun utilisateur n'a été trouvé
-						if (j == MAX_USERS) {
-							printf("Utilisateur inconnu\n");
+						if (j == NB_MAX_USERS) {
+							printf("[INFO] Utilisateur inconnu\n");
 							break;
 						}
 						
 						// On réceptionne les données du client
-						lus = read(pollfds[i].fd, messageRecu, LG_MESSAGE*sizeof(char));
+						lus = read(pollfds[i].fd, messageRecu, LG_MAX_MESSAGE*sizeof(char));
 
 						switch (lus) {
 							case -1 : /* Une erreur */
@@ -166,14 +171,24 @@ int main() {
 								exit(-5);
 
 							case 0 : /* La socket est fermée */
-								printf("L'utilisateur %s en position %d a quitté le tchat\n", users[j].login, j);
+								printf("[INFO] L'utilisateur %s en position %d a quitté le tchat\n", users[j].login, j);
 								memset(&users[j], '\0', sizeof(struct user));
 
 							default: /* Réception de n octets */
-								printf("Message reçu de %s : %s (%d octets)\n\n", users[j].login, messageRecu, lus);
+								printf("[INFO] Message reçu de %s : %s (%d octets)\n", users[j].login, messageRecu, lus);
+
+								// Test si c'est une commande
+								if (strncmp(messageRecu, "/", 1) == 0) {
+									gestionCommandeUser(users, users[j].login, users[j].socket, messageRecu);
+								}
+
+								// Sinon, envoyer le message à tout le monde (sauf à celui qui envoie le message) en indiquant qui c'est qui envoie ce message
+								else {
+									afficherMessageATous(users, users[j].login, users[j].socket, messageRecu);
+								}
 								
-								//dissect protocole msg(users, pollfds[i].fd, messageRecu);
-								//memset(messageRecu, '\0', LG_MESSAGE*sizeof(char));
+								// Initialiser la variable message reçu
+								memset(messageRecu, '\0', LG_MAX_MESSAGE*sizeof(char));
 						}
 					}
 				}
@@ -188,4 +203,168 @@ int main() {
 	close(socketEcoute);
 
 	return 0;
+}
+
+/* Fonction traitant la commande de l'utilisateur */
+int gestionCommandeUser(struct user users[], char nom_user_qui_demande[], int socket_user_qui_demande, char messageRecu[]) {
+	
+	char messageAEnvoyer[LG_MAX_MESSAGE + 50];
+	int ecrits;
+
+	// Initialiser la variable message à envoyer
+	memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 50)*sizeof(char));
+
+	// Test si c'est la commande de message privé
+	if (strncmp(messageRecu, "/msg ", strlen("/msg ")) == 0) {
+		
+		printf("[DEBUG] Commande de message privé détectée !\n");
+
+		int i;
+		char syntaxe_msg[LG_MAX_LOGIN + strlen("/msg ")];
+
+		// Initialiser la variable syntaxe commande msg
+		memset(syntaxe_msg, '\0', (LG_MAX_LOGIN + strlen("/msg "))*sizeof(char));
+
+		// Chercher quel utilisateur est ciblé
+		for (i = 0; i < NB_MAX_USERS; i++) {
+			
+			strcpy(syntaxe_msg, "/msg ");
+			strcat(syntaxe_msg, users[i].login);
+			strcat(syntaxe_msg, " ");
+
+			// Si on a trouvé l'utilisateur ciblé, on lui envoie le message
+			if (strncmp(messageRecu, syntaxe_msg, strlen(users[i].login) + 6) == 0) {
+				
+				sprintf(messageAEnvoyer, "Message privé de %s : ", nom_user_qui_demande);
+				strcat(messageAEnvoyer, messageRecu);
+				strcat(messageAEnvoyer, "\n");
+
+				// Envoi du message à l'utilisateur ciblé
+				ecrits = write(users[i].socket, messageAEnvoyer, strlen(messageAEnvoyer));
+				
+				printf("[INFO] Message privé %s envoyé à %s (%d octets)\n", messageAEnvoyer, users[i].login, ecrits);
+
+				return 0;
+			}
+		}
+
+		// Si l'utilisateur n'a pas été trouvé
+		if (i == NB_MAX_USERS) {
+			
+			strcat(messageAEnvoyer, "Utilisateur inconnu !\n");
+
+			// Envoi du message à l'utilisateur ciblé
+			ecrits = write(users[i].socket, messageAEnvoyer, strlen(messageAEnvoyer));
+
+			printf("[DEBUG] Utilisateur inconnu !\n");
+
+		}
+		
+	}
+
+	// Test si c'est la commande de liste
+	else if (strncmp(messageRecu, "/liste", strlen("/liste")) == 0) {
+		
+		printf("[DEBUG] Commande de liste détectée !\n");
+
+		strcpy(messageAEnvoyer, "Liste des utilisateurs : ");
+
+		for (int i = 0; i < NB_MAX_USERS; i++) {
+			if (users[i].socket != 0) {
+				strcat(messageAEnvoyer, users[i].login);
+				strcat(messageAEnvoyer, " ");
+			}
+		}
+
+		strcat(messageAEnvoyer, "\n");
+
+		ecrits = write(socket_user_qui_demande, messageAEnvoyer, strlen(messageAEnvoyer));
+				
+		printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, nom_user_qui_demande, ecrits);
+		
+	}
+
+	// Test si c'est la commande de changement de pseudo
+	else if (strncmp(messageRecu, "/nick ", strlen("/nick ")) == 0) {
+
+		
+
+	}
+
+	// Test si c'est la commande de demande de version
+	else if (strncmp(messageRecu, "/ver", strlen("/ver")) == 0) {
+
+		printf("[DEBUG] Commande de version détectée !\n");
+
+		strcpy(messageAEnvoyer, "Version du serveur : 1.0\n");
+
+		ecrits = write(socket_user_qui_demande, messageAEnvoyer, strlen(messageAEnvoyer));
+				
+		printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, nom_user_qui_demande, ecrits);
+
+	}
+
+	// Test si c'est la commande du respect
+	else if (strncmp(messageRecu, "/f", strlen("/f")) == 0) {
+
+		printf("[DEBUG] Commande du respect détectée !\n");
+
+		strcpy(messageAEnvoyer, "[SERVEUR] You pay respect !\n");
+
+		ecrits = write(socket_user_qui_demande, messageAEnvoyer, strlen(messageAEnvoyer));
+				
+		printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, nom_user_qui_demande, ecrits);
+
+	}
+
+	// Test si c'est la commande du doute
+	else if (strncmp(messageRecu, "/x", strlen("/x")) == 0) {
+
+		printf("[DEBUG] Commande du doute détectée !\n");
+
+		strcpy(messageAEnvoyer, "[SERVEUR] DOUBT\n");
+
+		ecrits = write(socket_user_qui_demande, messageAEnvoyer, strlen(messageAEnvoyer));
+				
+		printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, nom_user_qui_demande, ecrits);
+
+	}
+	
+	// Si la commande ne correspond à aucune connue
+	else {
+		printf("[DEBUG] Commande inconnue !\n");
+
+		strcpy(messageAEnvoyer, "[SERVEUR] Commande inconnue !\n");
+
+		ecrits = write(socket_user_qui_demande, messageAEnvoyer, strlen(messageAEnvoyer));
+				
+		printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, nom_user_qui_demande, ecrits);
+	}
+
+}
+
+/* Fonction permettant d'afficher à tous (sauf à l'envoyeur) un message envoyé par un utilisateur */
+void afficherMessageATous(struct user users[], char nom_user_qui_envoie[], int socket_user_qui_envoie, char message[]) {
+
+	for (int i = 0; i < NB_MAX_USERS; i++) {
+		
+		if (users[i].socket != 0 && users[i].socket != socket_user_qui_envoie) {
+			
+			char messageAEnvoyer[LG_MAX_MESSAGE + 10];
+
+			// Initialiser la variable message à envoyer
+			memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 10)*sizeof(char));
+			
+			// Création du message à envoyer
+			sprintf(messageAEnvoyer, "%s : ", nom_user_qui_envoie);
+			strcat(messageAEnvoyer, message);
+			strcat(messageAEnvoyer, "\n");
+
+			// Envoi du message
+			int ecrits = write(users[i].socket, messageAEnvoyer, strlen(messageAEnvoyer));
+			printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, users[i].login, ecrits);
+		}
+
+	}
+
 }
