@@ -38,10 +38,8 @@ int main() {
 	socklen_t longueurAdresse;
 	int socketDialogue;
 	struct sockaddr_in pointDeRencontreDistant;
-	char messageEnvoi[LG_MAX_MESSAGE]; // Message de la couche Application
 	char messageRecu[LG_MAX_MESSAGE]; // Message de la couche Application
 	int ecrits, lus; // Nb d'octets écrits et lus
-	int retour;
 	struct user users[NB_MAX_USERS];
 	struct pollfd pollfds[NB_MAX_USERS + 1];
 
@@ -237,7 +235,7 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 
 		// Si c'est un message global
 		if (strncmp(messageRecu, "<message> * ", strlen("<message> * ")) == 0) {
-			afficherMessageATous(users, users[id_user_qui_demande].login, users[id_user_qui_demande].socket, messageRecu + strlen("<message> * "));
+			afficherMessageATous(users, id_user_qui_demande, messageRecu + strlen("<message> * "));
 		}
 
 		// Sinon c'est un message privé
@@ -260,14 +258,14 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 				if (strncmp(messageRecu, syntaxe_msg, strlen(syntaxe_msg)) == 0) {
 					
 					// Création du message à envoyer
-					sprintf(messageAEnvoyer, "Message privé de %s : ", users[id_user_qui_demande].login);
+					sprintf(messageAEnvoyer, "<message> %s %s ", users[id_user_qui_demande].login, users[i].login);
 					strcat(messageAEnvoyer, messageRecu + strlen(syntaxe_msg));
 
 					// Envoi du message à l'utilisateur ciblé
 					ecrits = write(users[i].socket, messageAEnvoyer, strlen(messageAEnvoyer));
 					printf("[INFO] Message privé %s envoyé à %s (%d octets)\n", messageAEnvoyer, users[i].login, ecrits);
 
-					return 0;
+					break;
 				}
 			}
 
@@ -318,18 +316,45 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 		// Initialiser la variable syntaxe commande msg
 		memset(syntaxe_msg, '\0', (strlen("<login> ") + LG_MAX_LOGIN)*sizeof(char));
 
-		/*// On s'assure que quelqu'un ne possède pas déjà ce nom
+		// On s'assure que quelqu'un ne possède pas déjà ce nom
 		for (int i = 0; i < NB_MAX_USERS; i++) {
 
-			strcpy(syntaxe_msg, "<login> ");
-			strcat(syntaxe_msg, users[i].login);
+			if (users[i].socket != 0) {
+				
+				strcpy(syntaxe_msg, "<login> ");
+				strcat(syntaxe_msg, users[i].login);
+				
+				if (strncmp(messageRecu, syntaxe_msg, strlen(syntaxe_msg)) == 0) {
+					
+					printf("[DEBUG] Un nom identique a été trouvé !\n");
 
-			if (strncmp(messageRecu, syntaxe_msg, strlen(syntaxe_msg)) == 0 || messageRecu == "<login> srv") {
-				printf("[DEBUG] Un nom identique a été trouvé !\n");
-				return 0;
+					// Création du message à envoyer
+					strcpy(messageAEnvoyer, "<error> Nom déjà pris !\n");
+
+					// Envoi du message à l'utilisateur ciblé
+					ecrits = write(users[id_user_qui_demande].socket, messageAEnvoyer, strlen(messageAEnvoyer));
+					printf("[INFO] Message privé %s envoyé à %s (%d octets)\n", messageAEnvoyer, users[i].login, ecrits);
+
+					return 0;
+				}
+
+				else if (strncmp(messageRecu, "<login> srv", strlen("<login> srv")) == 0) {
+					
+					printf("[DEBUG] Le nom réservé au serveur a été trouvé !\n");
+
+					// Création du message à envoyer
+					strcpy(messageAEnvoyer, "<error> Ce nom est réservé au serveur !\n");
+
+					// Envoi du message à l'utilisateur ciblé
+					ecrits = write(users[id_user_qui_demande].socket, messageAEnvoyer, strlen(messageAEnvoyer));
+					printf("[INFO] Message privé %s envoyé à %s (%d octets)\n", messageAEnvoyer, users[i].login, ecrits);
+
+					return 0;
+				}
+
 			}
 
-		}*/
+		}
 
 		// Stocker l'ancien login du client
 		char ancien_login[LG_MAX_LOGIN];
@@ -341,8 +366,11 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 		// Enregistrer le nouveau nom du client
 		strcpy(users[id_user_qui_demande].login, messageRecu + strlen("<login> "));
 
+		// On supprime le retour à la ligne
+		users[id_user_qui_demande].login[strlen(users[id_user_qui_demande].login) - 1] = '\0';
+
 		// Création du message à envoyer
-		sprintf(messageAEnvoyer, "%s s'appelle désormais %s", ancien_login, users[id_user_qui_demande].login);
+		sprintf(messageAEnvoyer, "%s s'appelle désormais %s\n", ancien_login, users[id_user_qui_demande].login);
 
 		// Informer tout le monde
 		afficherMessageATous(users, -1, messageAEnvoyer);
@@ -361,6 +389,7 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 		printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, users[id_user_qui_demande].login, ecrits);
 	}
 
+	return 0;
 }
 
 /* Fonction permettant d'afficher à tous (sauf à l'envoyeur) un message envoyé par un utilisateur */
@@ -394,7 +423,7 @@ void afficherMessageATous(struct user users[], int id_user_qui_demande, char mes
 			memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 50)*sizeof(char));
 			
 			// Création du message à envoyer
-			sprintf(messageAEnvoyer, "%s : ", users[id_user_qui_demande].login);
+			sprintf(messageAEnvoyer, "<message> %s * ", users[id_user_qui_demande].login);
 			strcat(messageAEnvoyer, message);
 
 			// Envoi du message
