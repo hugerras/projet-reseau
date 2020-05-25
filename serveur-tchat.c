@@ -222,11 +222,11 @@ int main() {
 /* Fonction traitant la commande de l'utilisateur */
 int gestionCommande(struct user users[], int id_user_qui_demande, char messageRecu[]) {
 	
-	char messageAEnvoyer[LG_MAX_MESSAGE + 50];
+	char messageAEnvoyer[LG_MAX_MESSAGE + 100];
 	int ecrits;
 
 	// Initialiser la variable message à envoyer
-	memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 50)*sizeof(char));
+	memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 100)*sizeof(char));
 
 	// Test si c'est la commande de message privé
 	if (strncmp(messageRecu, "<message> ", strlen("<message> ")) == 0) {
@@ -309,7 +309,7 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 	// Test si c'est la commande de changement de pseudo
 	else if (strncmp(messageRecu, "<login> ", strlen("<login> ")) == 0) {
 
-		printf("[DEBUG] Commande changement de login détectée !\n");
+		printf("[DEBUG] Commande de changement de login détectée !\n");
 
 		char syntaxe_msg[strlen("<login> ") + LG_MAX_LOGIN];
 	
@@ -324,12 +324,27 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 				strcpy(syntaxe_msg, "<login> ");
 				strcat(syntaxe_msg, users[i].login);
 				
+				// Si le client a entré un login déjà utilisé par un autre utilisateur
 				if (strncmp(messageRecu, syntaxe_msg, strlen(syntaxe_msg)) == 0) {
 					
 					printf("[DEBUG] Un nom identique a été trouvé !\n");
 
-					// Création du message à envoyer
-					strcpy(messageAEnvoyer, "<error> Nom déjà pris !\n");
+					// Initialiser la variable syntaxe commande msg
+					memset(syntaxe_msg, '\0', (strlen("<login> ") + LG_MAX_LOGIN)*sizeof(char));
+
+					strcpy(syntaxe_msg, "<login> ");
+					strcat(syntaxe_msg, users[id_user_qui_demande].login);
+
+					// Si le client essaye de mettre son même login
+					if (strncmp(messageRecu, syntaxe_msg, strlen(syntaxe_msg)) == 0) {
+						// Création du message à envoyer
+						strcpy(messageAEnvoyer, "<error> Vous portez déjà ce nom !\n");
+					}
+
+					else {
+						// Création du message à envoyer
+						strcpy(messageAEnvoyer, "<error> Une personne utilise déjà ce nom !\n");
+					}
 
 					// Envoi du message à l'utilisateur ciblé
 					ecrits = write(users[id_user_qui_demande].socket, messageAEnvoyer, strlen(messageAEnvoyer));
@@ -338,6 +353,7 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 					return 0;
 				}
 
+				// Si le client a entré le login réservé au serveur
 				else if (strncmp(messageRecu, "<login> srv", strlen("<login> srv")) == 0) {
 					
 					printf("[DEBUG] Le nom réservé au serveur a été trouvé !\n");
@@ -376,6 +392,23 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 		afficherMessageATous(users, -1, messageAEnvoyer);
 	}
 	
+	// Test si c'est la commande d'aide
+	else if (strncmp(messageRecu, "<help>", strlen("<help>")) == 0) {
+		
+		printf("[DEBUG] Commande d'aide détectée !\n");
+
+		// Création du message à envoyer
+		sprintf(messageAEnvoyer, "<message> srv %s Listes des commandes :\n", users[id_user_qui_demande].login);
+		strcat(messageAEnvoyer, "• <message> [destinataire] [message] : Envoyer un message (* en destinataire pour envoyer à tout le monde)\n");
+		strcat(messageAEnvoyer, "• <list> : Afficher la liste des utilisateurs connectés\n");
+		strcat(messageAEnvoyer, "• <login> [pseudo] : Modifier son pseudo\n");
+		strcat(messageAEnvoyer, "• <help> : Afficher la liste des commandes\n");
+
+		// Envoi du message à l'utilisateur
+		ecrits = write(users[id_user_qui_demande].socket, messageAEnvoyer, strlen(messageAEnvoyer));
+		printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, users[id_user_qui_demande].login, ecrits);
+	}
+
 	// Si la commande ne correspond à aucune connue
 	else {
 
@@ -395,7 +428,7 @@ int gestionCommande(struct user users[], int id_user_qui_demande, char messageRe
 /* Fonction permettant d'afficher à tous (sauf à l'envoyeur) un message envoyé par un utilisateur */
 void afficherMessageATous(struct user users[], int id_user_qui_demande, char message[]) {
 
-	char messageAEnvoyer[LG_MAX_MESSAGE + 50];
+	char messageAEnvoyer[LG_MAX_MESSAGE + 100];
 
 	// Parcourir la liste des utilisateurs
 	for (int i = 0; i < NB_MAX_USERS; i++) {
@@ -404,7 +437,7 @@ void afficherMessageATous(struct user users[], int id_user_qui_demande, char mes
 		if (id_user_qui_demande == -1 && users[i].socket != 0) {
 			
 			// Initialiser la variable message à envoyer
-			memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 50)*sizeof(char));
+			memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 100)*sizeof(char));
 			
 			// Création du message à envoyer
 			strcpy(messageAEnvoyer, "<message> srv * ");
@@ -420,7 +453,7 @@ void afficherMessageATous(struct user users[], int id_user_qui_demande, char mes
 		else if (users[i].socket != 0 && users[i].socket != users[id_user_qui_demande].socket) {
 
 			// Initialiser la variable message à envoyer
-			memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 50)*sizeof(char));
+			memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 100)*sizeof(char));
 			
 			// Création du message à envoyer
 			sprintf(messageAEnvoyer, "<message> %s * ", users[id_user_qui_demande].login);
@@ -438,11 +471,11 @@ void afficherMessageATous(struct user users[], int id_user_qui_demande, char mes
 /* Fonction gérant les infos à envoyer au nouveau client */
 void nouvelleConnexion(char nom_nouveau_user[], int socket_nouveau_user) {
 
-	char messageAEnvoyer[LG_MAX_MESSAGE + 50];
+	char messageAEnvoyer[LG_MAX_MESSAGE + 100];
 	int ecrits;
 
 	// Initialiser la variable message à envoyer
-	memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 50)*sizeof(char));
+	memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 100)*sizeof(char));
 
 	// Création du message à envoyer
 	strcpy(messageAEnvoyer, "<version> 1.0\n");
@@ -452,10 +485,10 @@ void nouvelleConnexion(char nom_nouveau_user[], int socket_nouveau_user) {
 	printf("[INFO] Message %s envoyé à %s (%d octets)\n", messageAEnvoyer, nom_nouveau_user, ecrits);
 
 	// Initialiser la variable message à envoyer
-	memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 50)*sizeof(char));
+	memset(messageAEnvoyer, '\0', (LG_MAX_MESSAGE + 100)*sizeof(char));
 
 	// Création du message à envoyer
-	sprintf(messageAEnvoyer, "<greetings> Bienvenue sur le serveur %s !\n", nom_nouveau_user);
+	sprintf(messageAEnvoyer, "<greetings> Bienvenue sur le serveur %s ! Tapez <help> pour afficher la liste des commandes !\n", nom_nouveau_user);
 
 	// Envoi du message
 	ecrits = write(socket_nouveau_user, messageAEnvoyer, strlen(messageAEnvoyer));
