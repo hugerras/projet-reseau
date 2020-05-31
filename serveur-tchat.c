@@ -145,8 +145,8 @@ int main() {
 								// Initialiser la variable message
 								memset(message, '\0', LG_MAX_MESSAGE*sizeof(char));
 
-								strcpy(message, "vient de rejoindre le tchat !\n");
-								afficherMessageATous(users, j, message);
+								sprintf(message, "%s vient de rejoindre le tchat !\n", users[j].login);
+								afficherMessageATous(users, -1, message);
 
 								break;
 							}
@@ -190,8 +190,8 @@ int main() {
 								// Initialiser la variable message
 								memset(message, '\0', LG_MAX_MESSAGE*sizeof(char));
 
-								strcpy(message, "vient de quitter le tchat !\n");
-								afficherMessageATous(users, j, message);
+								sprintf(message, "%s vient de quitter le tchat !\n", users[j].login);
+								afficherMessageATous(users, -1, message);
 
 								// Réinitialisation de l'utilisateur
 								memset(&users[j], '\0', sizeof(struct user));
